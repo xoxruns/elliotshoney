@@ -11,6 +11,7 @@ from typing import Any, Callable, List, Set, Dict
 from functools import wraps
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
+from .honeypot_logger import get_logger
 
 # Load environment variables
 load_dotenv()
@@ -254,6 +255,17 @@ def honeypot(*allowed_tools):
                     print(f"[HONEYPOT] Initial verdict: {initial_judgment['severity'].upper()}")
                     print(f"[HONEYPOT] Reasoning: {initial_judgment['reasoning']}")
                     
+                    # Log the initial judgment
+                    logger = get_logger()
+                    logger.log_event(
+                        event_type="query_evaluation",
+                        severity=initial_judgment.get('severity', 'medium'),
+                        reasoning=initial_judgment.get('reasoning', ''),
+                        query=user_query,
+                        evaluation=initial_judgment,
+                        blocked=initial_judgment.get("is_destructive", False)
+                    )
+                    
                     # Block immediately if user query is clearly malicious
                     if initial_judgment["is_destructive"] and initial_judgment["severity"] in ["critical", "high"]:
                         print(f"\n[HONEYPOT] ❌ Query blocked - {initial_judgment['severity'].upper()} severity")
@@ -308,6 +320,17 @@ def honeypot(*allowed_tools):
                             print(f"  - {issue['type']}: {issue.get('tool', 'N/A')}")
                             if 'content' in issue:
                                 print(f"    Content: {issue['content'][:100]}...")
+                            
+                            # Log each critical issue
+                            logger.log_event(
+                                event_type="security_alert",
+                                tool_name=issue.get('tool', ''),
+                                severity="critical",
+                                reasoning=f"Issue type: {issue['type']}",
+                                query=user_query,
+                                blocked=True,
+                                metadata=issue
+                            )
                     
                     if warning_issues:
                         print("\n[HONEYPOT] ⚠️ Warning issues detected:")
@@ -342,6 +365,17 @@ def honeypot(*allowed_tools):
                         )
                         
                         if final_judgment["is_destructive"]:
+                            # Log the blocked simulation
+                            logger.log_event(
+                                event_type="simulation_blocked",
+                                severity=final_judgment.get('severity', 'high'),
+                                reasoning=final_judgment.get('reasoning', ''),
+                                query=user_query,
+                                evaluation=final_judgment,
+                                blocked=True,
+                                metadata={"critical_issues": critical_issues[:3]}
+                            )
+                            
                             print(f"\n[HONEYPOT] ❌ Execution blocked - simulation revealed dangerous behavior")
                             return {
                                 "messages": [(
@@ -388,6 +422,16 @@ def honeypot(*allowed_tools):
                                 )
                                 
                                 if recheck["is_destructive"]:
+                                    # Log content injection detection
+                                    logger.log_event(
+                                        event_type="content_injection",
+                                        severity="high",
+                                        reasoning="Response shows injection influence",
+                                        query=user_query,
+                                        evaluation=recheck,
+                                        blocked=True
+                                    )
+                                    
                                     return {
                                         "messages": [(
                                             "assistant",
