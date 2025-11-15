@@ -10,16 +10,22 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv for faster package management
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Copy project files
+# Copy project files first
 COPY pyproject.toml ./
 COPY README.md ./
 
-# Install Python dependencies using uv
-RUN uv pip install --system --no-cache -r <(uv pip compile pyproject.toml)
+# Install Python dependencies directly with pip
+RUN pip install --no-cache-dir \
+    langgraph>=1.0.3 \
+    langchain-core>=0.3.0 \
+    langchain-community>=0.3.0 \
+    langchain-google-genai>=3.0.0 \
+    langchain-openai>=0.2.0 \
+    langchain>=0.3.0 \
+    langchain-mistralai>=1.0.1 \
+    python-dotenv>=1.0.0 \
+    httpx>=0.27.0 \
+    streamlit>=1.29.0
 
 # Copy application code
 COPY . .
