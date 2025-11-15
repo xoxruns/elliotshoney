@@ -1,4 +1,14 @@
 # Use a Python image with uv pre-installed
+# 
+# NOTE: This Dockerfile requires BuildKit to be enabled for --mount cache support.
+# Enable BuildKit by running:
+#   export DOCKER_BUILDKIT=1
+#   docker build -t <image-name> .
+# Or use:
+#   DOCKER_BUILDKIT=1 docker build -t <image-name> .
+# Or permanently enable it in ~/.docker/config.json:
+#   { "features": { "buildkit": true } }
+#
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 # Install system dependencies (curl for healthcheck)
@@ -21,13 +31,11 @@ COPY pyproject.toml ./
 COPY README.md ./
 
 # Install the project's dependencies using the lockfile and settings
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-install-project --no-dev
+RUN uv sync 
 
 # Then, add the rest of the project source code and install it
 ADD . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
+RUN uv sync 
 
 # Create .env file from template if it doesn't exist
 # Note: For production, pass environment variables at runtime using:
