@@ -16,10 +16,11 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
 
-# Import tools
+# Import tools and honeypot decorators
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools import NotionMCPClient, SQLTool
+from decorators import honeypot_node
 
 # Load environment variables
 load_dotenv()
@@ -33,8 +34,8 @@ class AgentState(TypedDict):
 
 def create_vulnerable_agent():
     """
-    Create a ReAct agent for demonstration.
-    Note: This version lacks proper security boundaries.
+    Create a ReAct agent with node-level honeypot protection.
+    Each node is evaluated by an LLM judge with full conversation context.
     """
     # Initialize Mistral LLM
     llm = ChatMistralAI(
@@ -54,8 +55,8 @@ def create_vulnerable_agent():
     # Create tools dictionary for easy lookup
     tools_by_name = {tool.name: tool for tool in tools}
     
-    # Define the tool node
-    
+    # Define the tool node with honeypot protection and simulation
+    @honeypot_node("tool_node", simulate_first=True)
     def tool_node(state: AgentState):
         """Execute tools based on the last message's tool calls"""
         outputs = []
@@ -83,7 +84,8 @@ def create_vulnerable_agent():
         
         return {"messages": outputs}
     
-    # Define the model node
+    # Define the model node with honeypot protection
+    @honeypot_node("call_model")
     def call_model(state: AgentState, config: RunnableConfig):
         """
         Call the model to process user request
@@ -172,7 +174,7 @@ def run_vulnerable_agent(query: str, agent=None, thread_id: str = "default"):
     # Configuration for memory
     config = {"configurable": {"thread_id": thread_id}}
     
-    # Run agent
+    # Run agent with node-level protection
     result = agent.invoke(
         {"messages": [("user", query)]},
         config=config
@@ -181,7 +183,21 @@ def run_vulnerable_agent(query: str, agent=None, thread_id: str = "default"):
     # Extract final message
     messages = result.get("messages", [])
     if messages:
-        return messages[-1].content
+        last_msg = messages[-1]
+        
+        # Handle different message formats
+        if hasattr(last_msg, 'content'):
+            content = last_msg.content
+            # If content is a list with 'thinking' and 'text' types
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get('type') == 'text':
+                        return item.get('text', '')
+                # If no 'text' type found, stringify the list
+                return str(content)
+            return content
+        elif isinstance(last_msg, dict) and 'content' in last_msg:
+            return last_msg['content']
     
     return "No response"
 
@@ -189,15 +205,19 @@ def run_vulnerable_agent(query: str, agent=None, thread_id: str = "default"):
 if __name__ == "__main__":
     """Demo mode"""
     print("=" * 70)
-    print("DEMONSTRATION AGENT")
+    print("NODE-LEVEL HONEYPOT PROTECTION DEMO")
     print("=" * 70)
-    print("\nSimple ReAct Agent with Notion Integration")
-    print("(Educational Demo Version)\n")
+    print("\nAgent with full simulation and context-aware security")
+    print("All tools are simulated first to detect threats")
     print("=" * 70)
     
-    # Create agent
+    # Create agent with node-level honeypot
     agent = create_vulnerable_agent()
-    print("\n[WARNING] Vulnerable agent created\n")
+    print("\n[INFO] Agent created with advanced honeypot protection")
+    print("[INFO] Protected nodes: call_model, tool_node")
+    print("[INFO] ALL tools available - safety determined by simulation")
+    print("[INFO] Threats detected: SQL injection, destructive operations")
+    print("[INFO] Each action evaluated with full conversation context\n")
     
     # Generate thread ID for this session
     import uuid
