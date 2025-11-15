@@ -188,14 +188,24 @@ def run_vulnerable_agent(query: str, agent=None, thread_id: str = "default"):
         # Handle different message formats
         if hasattr(last_msg, 'content'):
             content = last_msg.content
-            # If content is a list with 'thinking' and 'text' types
-            if isinstance(content, list):
+            
+            # Handle different content formats
+            if isinstance(content, str):
+                return content
+            elif isinstance(content, list):
+                # Extract actual text from thinking/text structure
                 for item in content:
-                    if isinstance(item, dict) and item.get('type') == 'text':
-                        return item.get('text', '')
-                # If no 'text' type found, stringify the list
+                    if isinstance(item, dict):
+                        # Skip thinking content - we don't want to show internal reasoning
+                        if item.get('type') == 'thinking':
+                            continue
+                        # Return actual text content
+                        if item.get('type') == 'text':
+                            return item.get('text', '')
+                # If no text found, return string representation
                 return str(content)
-            return content
+            else:
+                return str(content)
         elif isinstance(last_msg, dict) and 'content' in last_msg:
             return last_msg['content']
     

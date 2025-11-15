@@ -181,7 +181,26 @@ def run_vulnerable_agent(query: str, agent=None, thread_id: str = "default"):
     # Extract final message
     messages = result.get("messages", [])
     if messages:
-        return messages[-1].content
+        last_msg = messages[-1]
+        content = last_msg.content
+        
+        # Handle different content formats
+        if isinstance(content, str):
+            return content
+        elif isinstance(content, list):
+            # Extract actual text from thinking/text structure
+            for item in content:
+                if isinstance(item, dict):
+                    # Skip thinking content
+                    if item.get('type') == 'thinking':
+                        continue
+                    # Return actual text content
+                    if item.get('type') == 'text':
+                        return item.get('text', '')
+            # If no text found, return string representation
+            return str(content)
+        else:
+            return str(content)
     
     return "No response"
 
