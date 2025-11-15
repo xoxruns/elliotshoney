@@ -1,7 +1,7 @@
 # Copy this file to .env and fill in your credentials
 
-# OpenAI API Key for LangChain
-OPENAI_API_KEY=your_openai_api_key_here
+# Mistral AI API Key for LangChain
+MISTRAL_API_KEY=your_mistral_api_key_here
 
 # ============================================
 # NOTION API KEY
