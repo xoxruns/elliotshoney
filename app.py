@@ -6,6 +6,7 @@ import streamlit as st
 import uuid
 import sys
 import os
+import json
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -50,6 +51,13 @@ st.markdown("---")
 
 # Sidebar for agent selection and controls
 with st.sidebar:
+    # Navigation based on current page
+    if st.session_state.get('page') == 'security_logs':
+        if st.button("← Back to Chat", use_container_width=True, type="primary"):
+            st.session_state.page = "chat"
+            st.rerun()
+        st.markdown("---")
+    
     st.header("⚙️ Configuration")
     
     # Agent selection
@@ -81,6 +89,14 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # Security Analytics button
+    st.header("📊 Security Analytics")
+    if st.button("🔍 View Security Logs", use_container_width=True):
+        st.session_state.page = "security_logs"
+        st.rerun()
+    
+    st.markdown("---")
+    
     # Memory controls
     st.header("🧠 Memory Management")
     
@@ -94,11 +110,6 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state.agent = None
         st.success("New session started!")
-    
-    # Display session info
-    st.markdown("---")
-    st.caption(f"**Session ID:** `{st.session_state.get('thread_id', 'N/A')[:8]}...`")
-    st.caption(f"**Messages:** {len(st.session_state.get('messages', []))}")
 
 # Initialize session state
 if 'messages' not in st.session_state:
@@ -113,110 +124,275 @@ if 'agent' not in st.session_state:
 if 'current_agent_type' not in st.session_state:
     st.session_state.current_agent_type = None
 
+if 'page' not in st.session_state:
+    st.session_state.page = "chat"
+
 # Check if agent type changed
 if st.session_state.current_agent_type != agent_type:
     st.session_state.agent = None
     st.session_state.current_agent_type = agent_type
 
-# Main content area
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.header("💬 Conversation")
+# Page routing
+if st.session_state.page == "security_logs":
+    # Security Logs Page
+    st.header("🔍 Security Event Logs")
+    st.markdown("---")
     
-    # Create or get agent
-    if st.session_state.agent is None:
-        with st.spinner(f"Initializing {'protected' if 'Protected' in agent_type else 'vulnerable'} agent..."):
-            try:
-                if "Protected" in agent_type:
-                    st.session_state.agent = create_protected_agent()
-                else:
-                    st.session_state.agent = create_vulnerable_agent()
-                st.success(f"✅ Agent initialized successfully!")
-            except Exception as e:
-                st.error(f"Failed to initialize agent: {str(e)}")
-                st.stop()
-    
-    # Chat interface
-    chat_container = st.container()
-    
-    # Display message history
-    with chat_container:
-        for message in st.session_state.messages:
-            if message["role"] == "user":
-                with st.chat_message("user", avatar="👤"):
-                    st.markdown(message["content"])
-            else:
-                with st.chat_message("assistant", avatar="🤖"):
-                    st.markdown(message["content"])
-    
-    # Chat input
-    if prompt := st.chat_input("Type your message here..."):
-        # Add user message
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        # Display user message
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(prompt)
-        
-        # Get agent response
-        with st.chat_message("assistant", avatar="🤖"):
-            with st.spinner("Agent is thinking..."):
-                try:
-                    # Run the appropriate agent
-                    if "Protected" in agent_type:
-                        response = run_protected_agent(
-                            prompt, 
-                            st.session_state.agent, 
-                            st.session_state.thread_id
-                        )
-                    else:
-                        response = run_vulnerable_agent(
-                            prompt, 
-                            st.session_state.agent, 
-                            st.session_state.thread_id
-                        )
-                    
-                    # Display response
-                    st.markdown(response)
-                    
-                    # Check for security warnings in protected agent
-                    if "Protected" in agent_type and "🛡️" in response:
-                        st.error("🚨 Security threat detected and blocked!")
-                    
-                    # Add to message history
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                    
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
-
-with col2:
-    st.header("📊 Security Status")
-    
-    # Security indicators
-    if "Protected" in agent_type:
-        st.markdown('<div class="honeypot-safe">🛡️ HONEYPOT ACTIVE</div>', unsafe_allow_html=True)
-        
-        # Count blocked attempts (look for shield emoji in messages)
-        blocked_count = sum(
-            1 for msg in st.session_state.messages 
-            if msg["role"] == "assistant" and "🛡️" in msg["content"]
+    # Import required modules
+    try:
+        from decorators.honeypot_logger import get_logger
+        from decorators.query_logs import (
+            query_security_events,
+            get_critical_events,
+            get_blocked_events,
+            search_by_query,
+            get_statistics
         )
         
-        if blocked_count > 0:
-            st.metric("Threats Blocked", blocked_count, delta=f"+{blocked_count}")
+        # Get statistics
+        stats = get_statistics()
+        
+        # Display metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Events", stats.get('total_events', 0))
+        with col2:
+            st.metric("Blocked", stats.get('blocked_count', 0), delta=f"{stats.get('blocked_percentage', 0):.1f}%")
+        with col3:
+            critical_count = stats.get('severity_distribution', {}).get('critical', 0)
+            st.metric("Critical", critical_count, delta_color="inverse" if critical_count > 0 else "off")
+        with col4:
+            high_count = stats.get('severity_distribution', {}).get('high', 0)
+            st.metric("High Severity", high_count, delta_color="inverse" if high_count > 0 else "off")
+        
+        st.markdown("---")
+        
+        # Filters
+        st.subheader("🔎 Filters")
+        filter_col1, filter_col2, filter_col3 = st.columns(3)
+        
+        with filter_col1:
+            search_query = st.text_input("Search (semantic)", placeholder="e.g., 'SQL injection', 'tool chaining'")
+            severity_filter = st.selectbox(
+                "Severity",
+                ["All", "critical", "high", "medium", "low", "none"],
+                index=0
+            )
+        
+        with filter_col2:
+            event_type_filter = st.selectbox(
+                "Event Type",
+                ["All", "query_evaluation", "node_evaluation", "tool_evaluation", "simulation"],
+                index=0
+            )
+            blocked_filter = st.selectbox(
+                "Status",
+                ["All", "Blocked Only", "Allowed Only"],
+                index=0
+            )
+        
+        with filter_col3:
+            node_filter = st.text_input("Node Name", placeholder="e.g., 'tool_node'")
+            tool_filter = st.text_input("Tool Name", placeholder="e.g., 'execute_sql'")
+        
+        limit = st.slider("Max Results", 10, 200, 50, 10)
+        
+        # Query button
+        if st.button("🔍 Apply Filters", use_container_width=True):
+            with st.spinner("Querying events..."):
+                # Build query parameters
+                query_params = {
+                    "limit": limit
+                }
+                
+                if search_query:
+                    query_params["query_text"] = search_query
+                if severity_filter != "All":
+                    query_params["severity"] = severity_filter
+                if event_type_filter != "All":
+                    query_params["event_type"] = event_type_filter
+                if blocked_filter == "Blocked Only":
+                    query_params["blocked"] = True
+                elif blocked_filter == "Allowed Only":
+                    query_params["blocked"] = False
+                if node_filter:
+                    query_params["node_name"] = node_filter
+                if tool_filter:
+                    query_params["tool_name"] = tool_filter
+                
+                # Query events
+                logger = get_logger()
+                events = logger.query_events(**query_params)
+                
+                st.session_state.filtered_events = events
+        
+        st.markdown("---")
+        
+        # Display results
+        if 'filtered_events' not in st.session_state:
+            # Default: show recent critical and high severity events
+            with st.spinner("Loading recent events..."):
+                events = get_critical_events(limit=20)
+                st.session_state.filtered_events = events
+        
+        events = st.session_state.filtered_events
+        
+        if events:
+            st.subheader(f"📋 Events ({len(events)} results)")
+            
+            # Display events
+            for event in events:
+                # Determine color based on severity and blocked status
+                if event.get('blocked'):
+                    if event.get('severity') == 'critical':
+                        container = st.error
+                    elif event.get('severity') == 'high':
+                        container = st.warning
+                    else:
+                        container = st.info
+                else:
+                    container = st.success if event.get('severity') in ['low', 'none'] else st.info
+                
+                with container(f"**{event.get('event_type', 'Unknown')}** - {event.get('severity', 'unknown').upper()}"):
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        st.write(f"**Event ID:** `{event.get('event_id', 'N/A')[:8]}...`")
+                        st.write(f"**Time:** {event.get('timestamp', 'N/A')}")
+                        if event.get('node_name'):
+                            st.write(f"**Node:** {event.get('node_name')}")
+                        if event.get('tool_name'):
+                            st.write(f"**Tool:** {event.get('tool_name')}")
+                        if event.get('query'):
+                            with st.expander("Query"):
+                                st.code(event.get('query')[:500])
+                        if event.get('reasoning'):
+                            with st.expander("Reasoning"):
+                                st.write(event.get('reasoning'))
+                        if event.get('state_snapshot'):
+                            with st.expander("State Snapshot"):
+                                try:
+                                    snapshot = json.loads(event.get('state_snapshot'))
+                                    st.json(snapshot)
+                                except:
+                                    st.text(event.get('state_snapshot'))
+                    
+                    with col2:
+                        if event.get('blocked'):
+                            st.error("🚫 BLOCKED")
+                        else:
+                            st.success("✅ ALLOWED")
+                        
+                        st.metric("Score", f"{event.get('score', 0):.2f}")
         else:
-            st.metric("Threats Blocked", 0)
+            st.info("No events found matching your filters.")
         
-        st.success("All actions are evaluated for safety")
+    except ImportError as e:
+        st.error(f"Failed to import logging modules: {e}")
+        st.info("Make sure Qdrant dependencies are installed: `pip install qdrant-client sentence-transformers`")
+    except Exception as e:
+        st.error(f"Error loading security logs: {e}")
+    
+else:
+    # Main Chat Page
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.header("💬 Conversation")
         
-    else:
-        st.markdown('<div class="honeypot-warning">⚠️ NO PROTECTION</div>', unsafe_allow_html=True)
-        st.error("Agent vulnerable to prompt injection!")
-        st.warning("""
-        **Active Risks:**
-        - Prompt injection
-        - SQL injection
-        - Data exfiltration
-        - Unauthorized actions
-        """)
+        # Create or get agent
+        if st.session_state.agent is None:
+            with st.spinner(f"Initializing {'protected' if 'Protected' in agent_type else 'vulnerable'} agent..."):
+                try:
+                    if "Protected" in agent_type:
+                        st.session_state.agent = create_protected_agent()
+                    else:
+                        st.session_state.agent = create_vulnerable_agent()
+                    st.success(f"✅ Agent initialized successfully!")
+                except Exception as e:
+                    st.error(f"Failed to initialize agent: {str(e)}")
+                    st.stop()
+        
+        # Chat interface
+        chat_container = st.container()
+        
+        # Display message history
+        with chat_container:
+            for message in st.session_state.messages:
+                if message["role"] == "user":
+                    with st.chat_message("user", avatar="👤"):
+                        st.markdown(message["content"])
+                else:
+                    with st.chat_message("assistant", avatar="🤖"):
+                        st.markdown(message["content"])
+        
+        # Chat input
+        if prompt := st.chat_input("Type your message here..."):
+            # Add user message
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            
+            # Display user message
+            with st.chat_message("user", avatar="👤"):
+                st.markdown(prompt)
+            
+            # Get agent response
+            with st.chat_message("assistant", avatar="🤖"):
+                with st.spinner("Agent is thinking..."):
+                    try:
+                        # Run the appropriate agent
+                        if "Protected" in agent_type:
+                            response = run_protected_agent(
+                                prompt, 
+                                st.session_state.agent, 
+                                st.session_state.thread_id
+                            )
+                        else:
+                            response = run_vulnerable_agent(
+                                prompt, 
+                                st.session_state.agent, 
+                                st.session_state.thread_id
+                            )
+                        
+                        # Display response
+                        st.markdown(response)
+                        
+                        # Check for security warnings in protected agent
+                        if "Protected" in agent_type and "🛡️" in response:
+                            st.error("🚨 Security threat detected and blocked!")
+                        
+                        # Add to message history
+                        st.session_state.messages.append({"role": "assistant", "content": response})
+                        
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+
+    with col2:
+        st.header("📊 Security Status")
+        
+        # Security indicators
+        if "Protected" in agent_type:
+            st.markdown('<div class="honeypot-safe">🛡️ HONEYPOT ACTIVE</div>', unsafe_allow_html=True)
+            
+            # Count blocked attempts (look for shield emoji in messages)
+            blocked_count = sum(
+                1 for msg in st.session_state.messages 
+                if msg["role"] == "assistant" and "🛡️" in msg["content"]
+            )
+            
+            if blocked_count > 0:
+                st.metric("Threats Blocked", blocked_count, delta=f"+{blocked_count}")
+            else:
+                st.metric("Threats Blocked", 0)
+            
+            st.success("All actions are evaluated for safety")
+            
+        else:
+            st.markdown('<div class="honeypot-warning">⚠️ NO PROTECTION</div>', unsafe_allow_html=True)
+            st.error("Agent vulnerable to prompt injection!")
+            st.warning("""
+            **Active Risks:**
+            - Prompt injection
+            - SQL injection
+            - Data exfiltration
+            - Unauthorized actions
+            """)
