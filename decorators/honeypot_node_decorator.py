@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Set
 from functools import wraps
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
+from .honeypot_logger import get_logger
 
 # Load environment variables
 load_dotenv()
@@ -357,6 +358,25 @@ def honeypot_node(node_name: str = None, simulate_first: bool = True):
                     print(f"[HONEYPOT NODE] Judge verdict: {final_evaluation['severity'].upper()}")
                     print(f"[HONEYPOT NODE] Reasoning: {final_evaluation['reasoning']}")
                     
+                    # Log the evaluation
+                    logger = get_logger()
+                    query_text = ""
+                    if messages:
+                        last_msg = messages[-1]
+                        if hasattr(last_msg, 'content'):
+                            query_text = str(last_msg.content)[:500]
+                    
+                    logger.log_event(
+                        event_type="node_evaluation",
+                        node_name=name,
+                        severity=final_evaluation.get('severity', 'medium'),
+                        reasoning=final_evaluation.get('reasoning', ''),
+                        query=query_text,
+                        state=state,
+                        evaluation=final_evaluation,
+                        blocked=not final_evaluation.get("is_safe", False)
+                    )
+                    
                     # Let the judge decide based on context
                     if not final_evaluation["is_safe"] and final_evaluation["severity"] in ["critical", "high"]:
                         print("\n" + "="*60)
@@ -400,6 +420,20 @@ def honeypot_node(node_name: str = None, simulate_first: bool = True):
                 
                 print(f"[HONEYPOT NODE] Verdict: {evaluation['severity'].upper()}")
                 print(f"[HONEYPOT NODE] Reasoning: {evaluation['reasoning']}")
+                
+                # Log the evaluation
+                logger = get_logger()
+                query_text = last_msg if last_msg else ""
+                logger.log_event(
+                    event_type="node_evaluation",
+                    node_name=name,
+                    severity=evaluation.get('severity', 'medium'),
+                    reasoning=evaluation.get('reasoning', ''),
+                    query=query_text,
+                    state=state,
+                    evaluation=evaluation,
+                    blocked=not evaluation.get("is_safe", False)
+                )
                 
                 # Block if unsafe
                 if not evaluation["is_safe"] and evaluation["severity"] in ["critical", "high"]:
