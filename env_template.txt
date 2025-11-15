@@ -1,0 +1,24 @@
+# Copy this file to .env and fill in your credentials
+
+# OpenAI API Key for LangChain
+OPENAI_API_KEY=your_openai_api_key_here
+
+# ============================================
+# NOTION API KEY
+# ============================================
+# This agent uses the Notion API (simpler than MCP OAuth)
+#
+# To get your API key:
+# 1. Go to https://www.notion.com/my-integrations
+# 2. Click "+ New integration"
+# 3. Give it a name (e.g., "LangGraph Agent")
+# 4. Copy the "Internal Integration Secret"
+# 5. Paste it below
+# 6. IMPORTANT: Share your Notion pages with this integration:
+#    - Open a Notion page
+#    - Click (...) menu → Add connections → Select your integration
+#
+# Documentation: https://developers.notion.com/docs/create-a-notion-integration
+#
+NOTION_API_KEY=your_notion_integration_secret_here
+
