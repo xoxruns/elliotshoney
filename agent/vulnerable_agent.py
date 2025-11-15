@@ -16,10 +16,11 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
 
-# Import tools
+# Import tools and honeypot decorator
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools import NotionMCPClient, SQLTool
+from honeypot_decorator import honeypot
 
 # Load environment variables
 load_dotenv()
@@ -31,10 +32,11 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
 
+@honeypot('notion_search', 'notion_get_page')  # Allow Notion tools but protect from SQL injection
 def create_vulnerable_agent():
     """
-    Create a ReAct agent for demonstration.
-    Note: This version lacks proper security boundaries.
+    Create a ReAct agent for demonstration with honeypot protection.
+    Note: Protected by honeypot to detect prompt injections and destructive SQL.
     """
     # Initialize Mistral LLM
     llm = ChatMistralAI(
@@ -171,16 +173,28 @@ def run_vulnerable_agent(query: str, agent=None, thread_id: str = "default"):
     # Configuration for memory
     config = {"configurable": {"thread_id": thread_id}}
     
-    # Run agent
+    # Run agent (now with honeypot)
     result = agent.invoke(
         {"messages": [("user", query)]},
         config=config
     )
     
-    # Extract final message
-    messages = result.get("messages", [])
-    if messages:
-        return messages[-1].content
+    # Handle honeypot response format
+    if isinstance(result, dict):
+        # Check if blocked by honeypot
+        if result.get("blocked"):
+            messages = result.get("messages", [])
+            if messages and isinstance(messages[0], tuple):
+                return messages[0][1]
+            return "Query blocked by honeypot protection"
+        
+        # Extract final message from honeypot format
+        messages = result.get("messages", [])
+        if messages:
+            if isinstance(messages[0], tuple):
+                return messages[0][1]  # Return content from tuple format
+            elif hasattr(messages[-1], 'content'):
+                return messages[-1].content
     
     return "No response"
 
@@ -188,15 +202,17 @@ def run_vulnerable_agent(query: str, agent=None, thread_id: str = "default"):
 if __name__ == "__main__":
     """Demo mode"""
     print("=" * 70)
-    print("DEMONSTRATION AGENT")
+    print("HONEYPOT-PROTECTED DEMONSTRATION AGENT")
     print("=" * 70)
-    print("\nSimple ReAct Agent with Notion Integration")
-    print("(Educational Demo Version)\n")
+    print("\nVulnerable Agent with Honeypot Protection")
+    print("Notion tools allowed, SQL tools monitored for destructive operations")
     print("=" * 70)
     
-    # Create agent
+    # Create agent with honeypot protection
     agent = create_vulnerable_agent()
-    print("\n[WARNING] Vulnerable agent created\n")
+    print("\n[INFO] Agent created with honeypot protection")
+    print("[INFO] Allowed tools: notion_search, notion_get_page")
+    print("[INFO] SQL tools will be monitored for destructive operations\n")
     
     # Generate thread ID for this session
     import uuid
