@@ -49,6 +49,7 @@ class NotionMCPClient:
         Returns:
             JSON string with search results
         """
+        print(f"\n[NOTION SEARCH]: {query}\n")
         try:
             with httpx.Client(timeout=30.0) as client:
                 # If query is empty or "all", search for everything
@@ -110,6 +111,7 @@ class NotionMCPClient:
         Returns:
             JSON string with page metadata and content
         """
+        print(f"\n[NOTION GET PAGE]: {page_id}\n")
         try:
             # Clean page ID (remove hyphens if present)
             page_id = page_id.replace("-", "")
